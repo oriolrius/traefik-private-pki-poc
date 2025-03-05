@@ -1,0 +1,16 @@
+tls:
+  certificates:
+    - certFile: /etc/certs/any.example.tld.crt
+      keyFile: /etc/certs/any.example.tld.key
+  options:
+    default:
+      sniStrict: true
+      minVersion: VersionTLS13
+
+  # traefik 3.X
+  # serversTransport:
+  #   rootCAs:
+  #     - /etc/certs/ca.crt
+  # options:
+    # default:
+      # sniStrict: true

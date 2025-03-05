@@ -1,0 +1,96 @@
+networks:
+  internal:
+
+services:
+  api-gateway:
+    image: traefik:v2.11
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--api.dashboard=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
+      # stream is an arbitrary name, for representing the tcp entrypoint
+      - "--entrypoints.stream.address=:1234"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.filename=/etc/traefik/conf.d/tls.yml"
+      - "--providers.file.watch=true"
+      - "--log.level=WARN"
+      - "--accesslog=true"
+      # - "--serversTransport.insecureSkipVerify=true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "1234:1234"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./etc/tls.yml:/etc/traefik/conf.d/tls.yml:ro
+      - ./certs:/etc/certs
+    labels:
+      - traefik.enable=true
+      
+      - traefik.http.services.api-gateway.loadbalancer.server.port=8080
+      - traefik.http.routers.api-gateway.rule=Host(`ingress.${DOMAIN}`)
+      - traefik.http.routers.api-gateway.entrypoints=web
+      - traefik.http.routers.api-gateway.middlewares=ingress-auth,redirect-web-secure
+
+      - traefik.http.routers.api-gateway-secure.rule=Host(`ingress.${DOMAIN}`)
+      - traefik.http.routers.api-gateway-secure.entrypoints=websecure
+      - traefik.http.routers.api-gateway-secure.tls=true
+      - traefik.http.routers.api-gateway-secure.middlewares=ingress-auth,redirect-web-secure
+
+      - traefik.http.middlewares.ingress-auth.basicauth.users=${INGRESS_USER}:${INGRESS_ACCESS_HTPASSWD}
+      - traefik.http.middlewares.redirect-web-secure.redirectscheme.scheme=https
+      - traefik.http.middlewares.redirect-web-secure.redirectscheme.permanent=true
+    networks:
+      - internal
+
+  whoami:
+    image: traefik/whoami
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      
+      - traefik.http.routers.whoami.rule=Host(`whoami.${DOMAIN}`)
+      - traefik.http.routers.whoami.entrypoints=web
+      - traefik.http.routers.whoami.service=whoami
+      - traefik.http.routers.whoami.middlewares=whoami-https-redirect
+
+      - traefik.http.routers.whoami-secure.rule=Host(`whoami.${DOMAIN}`)
+      - traefik.http.routers.whoami-secure.entrypoints=websecure
+      - traefik.http.routers.whoami-secure.service=whoami
+      - traefik.http.routers.whoami-secure.middlewares=replaceHost
+      - traefik.http.routers.whoami-secure.tls=true
+
+      - traefik.http.middlewares.cors.headers.customResponseHeaders.Access-Control-Allow-Origin=*
+      - traefik.http.middlewares.cors.headers.accesscontrolallowmethods=POST
+
+      - traefik.http.middlewares.whoami-https-redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.whoami-https-redirect.redirectscheme.permanent=true
+      - traefik.http.middlewares.whoami-headers.headers.contentSecurityPolicy=frame-ancestors *
+
+      - traefik.http.services.whoami.loadbalancer.server.port=80
+      - traefik.http.services.whoami.loadbalancer.server.scheme=http
+
+      - traefik.http.middlewares.removeHost.headers.customrequestheaders.Host=
+      - traefik.http.middlewares.setHost.headers.customrequestheaders.Host=localhost
+      - traefik.http.middlewares.replaceHost.chain.middlewares=removeHost,setHost,whoami-headers
+    networks:
+      - internal
+
+  echo:
+    image: alpine/socat:latest
+    command: "tcp-listen:1234,fork,reuseaddr EXEC:/bin/cat"
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+
+      - traefik.tcp.routers.echo.entrypoints=stream
+      - traefik.tcp.routers.echo.rule=HostSNI(`echo.${DOMAIN}`)
+      - traefik.tcp.routers.echo.service=echo
+      - traefik.tcp.routers.echo.tls=true
+      - traefik.tcp.services.echo.loadbalancer.server.port=1234
+    networks:
+      - internal

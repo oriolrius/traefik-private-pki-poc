@@ -1,0 +1,2 @@
+# Inline files in the 'private' directory contain security keys which
+# MUST only be transmitted over a secure connection, such as 'scp'.
