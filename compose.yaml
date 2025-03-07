@@ -1,6 +1,26 @@
 networks:
   internal:
 
+configs:
+  tls_yml:
+    content: |
+      tls:
+        certificates:
+          - certFile: /etc/certs/any.example.tld.crt
+            keyFile: /etc/certs/any.example.tld.key
+        options:
+          default:
+            sniStrict: true
+            minVersion: VersionTLS13
+        # traefik 3.X
+        # serversTransport:
+        #   rootCAs:
+        #     - /etc/certs/ca.crt
+        # options:
+          # default:
+            # sniStrict: true
+
+
 services:
   api-gateway:
     image: traefik:v2.11
@@ -26,7 +46,6 @@ services:
       - "1234:1234"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./etc/tls.yml:/etc/traefik/conf.d/tls.yml:ro
       - ./certs:/etc/certs
     labels:
       - traefik.enable=true
@@ -44,6 +63,9 @@ services:
       - traefik.http.middlewares.ingress-auth.basicauth.users=${INGRESS_USER}:${INGRESS_ACCESS_HTPASSWD}
       - traefik.http.middlewares.redirect-web-secure.redirectscheme.scheme=https
       - traefik.http.middlewares.redirect-web-secure.redirectscheme.permanent=true
+    configs:
+      - source: tls_yml
+        target: /etc/traefik/conf.d/tls.yml
     networks:
       - internal
 
